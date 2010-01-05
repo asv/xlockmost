@@ -6,4 +6,5 @@
 ##
 
 bin_PROGRAMS = xlockmost
-xlockmost_SOURCES = main.c
+xlockmost_SOURCES = main.c utils.c utils.h pam_auth.c pam_auth.h
+xlockmost_LDADD = $(LDADD) $(X11_LIBS) $(PAM_LIBS)
