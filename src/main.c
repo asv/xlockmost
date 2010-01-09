@@ -42,6 +42,9 @@ static void
 x11_handle_keypressed (XKeyPressedEvent *ev);
 
 static void
+x11_hide_cursor (void);
+
+static void
 main_cleanup (void);
 
 int
@@ -97,6 +100,9 @@ x11_init (int argc, char **argv)
                         argv, argc, NULL, NULL, &xch);
 
   XSetWindowBackground (display, window, BlackPixel (display, screen));
+
+  x11_hide_cursor ();
+
   XMapRaised (display, window);
 
   if (XGrabKeyboard (display, window, False, GrabModeAsync,
@@ -127,6 +133,8 @@ x11_cleanup (void)
     {
       XUngrabKeyboard (display, CurrentTime);
       XUngrabPointer (display, CurrentTime);
+
+      XUndefineCursor (display, window);
 
       XDestroyWindow (display, window);
       XCloseDisplay (display);
@@ -233,6 +241,26 @@ static void
 x11_break_main_loop (void)
 {
   doomsday = 0;
+}
+
+static void
+x11_hide_cursor (void)
+{
+  Cursor invisible_cursor;
+  Pixmap nodata_pixmap;
+  XColor black;
+
+  const char nodata[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+  black.red = black.green = black.blue = 0;
+
+  nodata_pixmap = XCreateBitmapFromData (display, window, nodata, 8, 8);
+  invisible_cursor = XCreatePixmapCursor (display,nodata_pixmap, nodata_pixmap,
+                                          &black, &black, 0, 0);
+
+  XDefineCursor (display, window, invisible_cursor);
+
+  XFreePixmap (display, nodata_pixmap);
+  XFreeCursor (display, invisible_cursor);
 }
 
 static void
