@@ -57,6 +57,15 @@ pam_auth_init (void)
     }
 }
 
+void
+pam_auth_cleanup (void)
+{
+  if (pamh != NULL)
+    {
+      pam_end (pamh, PAM_SUCCESS);
+    }
+}
+
 int
 pam_auth_validate (char *password)
 {
@@ -77,7 +86,6 @@ pam_auth_validate (char *password)
       return AUTH_FAILURE;
     }
 
-  pam_end (pamh, PAM_SUCCESS);
   return AUTH_OK;
 }
 

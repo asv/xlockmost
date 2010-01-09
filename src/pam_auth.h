@@ -6,6 +6,9 @@ enum { AUTH_FAILURE, AUTH_OK };
 void
 pam_auth_init (void);
 
+void
+pam_auth_cleanup (void);
+
 int
 pam_auth_validate (char *password);
 

@@ -11,6 +11,11 @@
 #include "pam_auth.h"
 
 #define MAX_PASSWD_LEN 256
+#define POINTER_ATTRIBUTES \
+  (ButtonPressMask | ButtonReleaseMask | EnterWindowMask \
+   | LeaveWindowMask | PointerMotionMask | PointerMotionHintMask \
+   | Button1MotionMask | Button2MotionMask | Button3MotionMask \
+   | Button4MotionMask | Button5MotionMask | ButtonMotionMask)
 
 #define trace(format, args...) \
   fprintf (stderr, PACKAGE_NAME ": " format "\n", ##args);
@@ -36,15 +41,23 @@ x11_break_main_loop (void);
 static void
 x11_handle_keypressed (XKeyPressedEvent *ev);
 
+static void
+main_cleanup (void);
+
 int
 main (int argc, char **argv)
 {
+  if (atexit (main_cleanup) != 0)
+    {
+      trace ("cannot set exit function");
+      exit (EXIT_FAILURE);
+    }
+
   set_signal_handlers ();
   pam_auth_init ();
 
   x11_init (argc, argv);
   x11_do_main_loop ();
-  x11_cleanup ();
 
   return EXIT_SUCCESS;
 }
@@ -86,8 +99,23 @@ x11_init (int argc, char **argv)
   XSetWindowBackground (display, window, BlackPixel (display, screen));
   XMapRaised (display, window);
 
-  XGrabKeyboard (display, window, False,
-                 GrabModeAsync, GrabModeAsync, CurrentTime);
+  if (XGrabKeyboard (display, window, False, GrabModeAsync,
+                     GrabModeAsync, CurrentTime) != GrabSuccess)
+    {
+      XUngrabKeyboard (display, CurrentTime);
+
+      trace ("couldn't grab keyboard");
+      exit (EXIT_FAILURE);
+    }
+
+  if (XGrabPointer (display, window, False, POINTER_ATTRIBUTES, GrabModeAsync,
+                    GrabModeAsync, None, None, CurrentTime) != GrabSuccess)
+    {
+      XUngrabPointer (display, CurrentTime);
+
+      trace ("couldn't grab pointer");
+      exit (EXIT_FAILURE);
+    }
 
   XFlush (display);
 }
@@ -95,9 +123,14 @@ x11_init (int argc, char **argv)
 static void
 x11_cleanup (void)
 {
-  XUngrabKeyboard (display, CurrentTime);
-  XDestroyWindow (display, window);
-  XCloseDisplay (display);
+  if (display != NULL)
+    {
+      XUngrabKeyboard (display, CurrentTime);
+      XUngrabPointer (display, CurrentTime);
+
+      XDestroyWindow (display, window);
+      XCloseDisplay (display);
+    }
 }
 
 static void
@@ -176,10 +209,19 @@ x11_do_main_loop (void)
         case KeyPress:
           x11_handle_keypressed (&ev.xkey);
           break;
-        case KeyRelease:
-          break;
+
         case Expose:
           break;
+
+        case KeyRelease:
+        case ButtonRelease:
+        case ButtonPress:
+        case KeymapNotify:
+        case MotionNotify:
+        case LeaveNotify:
+        case EnterNotify:
+          break;
+
         default:
           trace ("unknown event type %d", ev.type);
           break;
@@ -193,3 +235,11 @@ x11_break_main_loop (void)
   doomsday = 0;
 }
 
+static void
+main_cleanup (void)
+{
+  pam_auth_cleanup ();
+  x11_cleanup ();
+
+  trace ("good bye");
+}
