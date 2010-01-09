@@ -60,8 +60,25 @@ pam_auth_init (void)
 int
 pam_auth_validate (char *password)
 {
+  int retval;
+
   pam_password = password;
-  return (pam_authenticate (pamh, 0) != PAM_SUCCESS) ? AUTH_FAILURE : AUTH_OK;
+  retval = pam_authenticate (pamh, 0);
+
+  if (retval != PAM_SUCCESS)
+    {
+      return AUTH_FAILURE;
+    }
+
+  retval = pam_acct_mgmt (pamh, 0);
+
+  if (retval != PAM_SUCCESS)
+    {
+      return AUTH_FAILURE;
+    }
+
+  pam_end (pamh, PAM_SUCCESS);
+  return AUTH_OK;
 }
 
 static int
