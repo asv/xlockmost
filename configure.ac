@@ -5,10 +5,10 @@
 ## of this file, and for a DISCLAMER OF ALL WARRANTIES.
 ##
 
-# m4_define([VERSION_NUMBER], m4_esyscmd([git describe --abbrev=4 | tr -d '\n']))
+m4_define([VERSION_NUMBER], m4_esyscmd([git describe --abbrev=4 | tr -d '\n']))
 
 AC_PREREQ(2.61)
-AC_INIT([xlockmost], [0.1], [alexey.smirnov@gmx.com])
+AC_INIT([xlockmost], [VERSION_NUMBER], [alexey.smirnov@gmx.com])
 
 AM_INIT_AUTOMAKE(AC_PACKAGE_NAME, AC_PACKAGE_VERSION)
 AM_MAINTAINER_MODE
@@ -26,7 +26,7 @@ AC_CHECK_HEADERS([signal.h pwd.h string.h],,
      AC_MSG_ERROR([missing required header (see above)])
     ])
 
-PKG_CHECK_MODULES([X11], [x11])
+PKG_CHECK_MODULES([X11], [x11 xext])
 AC_CHECK_HEADER([security/pam_appl.h],
     [
      AC_CHECK_LIB([pam], [pam_start],
