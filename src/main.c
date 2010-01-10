@@ -7,6 +7,8 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 
+#include <getopt.h>
+
 #include "utils.h"
 #include "pam_auth.h"
 
@@ -47,9 +49,17 @@ x11_hide_cursor (void);
 static void
 main_cleanup (void);
 
+static int
+parse_arguments (int argc, char **argv);
+
 int
 main (int argc, char **argv)
 {
+  if (parse_arguments (argc, argv) != 0)
+    {
+      exit (EXIT_FAILURE);
+    }
+
   if (atexit (main_cleanup) != 0)
     {
       trace ("cannot set exit function");
@@ -270,4 +280,42 @@ main_cleanup (void)
   x11_cleanup ();
 
   trace ("good bye");
+}
+
+static int
+parse_arguments (int argc, char **argv)
+{
+  char *short_options = "vh";
+  struct option long_options[] = {
+    {"version", no_argument, 0, 'v'},
+    {"help",    no_argument, 0, 'h'},
+
+    {0, 0, 0, 0}
+  };
+
+  int opt, optind;
+  while ((opt = getopt_long (argc, argv, short_options,
+                             long_options, &optind)) != -1)
+    {
+      switch (opt)
+        {
+        case 'v':
+          printf ("%s %s Copyright (C) 2010 Alexey Smirnov\n",
+                  PACKAGE_NAME, VERSION);
+          exit (EXIT_SUCCESS);
+          break;
+        case 'h':
+          puts ("Usage: " PACKAGE_NAME " [options]");
+          puts ("Options:");
+          puts ("   -v, --version        print version number");
+          puts ("   -h, --help           show this help screen");
+          exit (EXIT_SUCCESS);
+          break;
+        default:
+          /* unrecognized option */
+          return 1;
+        }
+    }
+
+  return 0;
 }
