@@ -6,6 +6,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
+#include <X11/extensions/dpms.h>
 
 #include <getopt.h>
 
@@ -22,8 +23,16 @@
 #define trace(format, args...) \
   fprintf (stderr, PACKAGE_NAME ": " format "\n", ##args);
 
+typedef struct {
+    CARD16 standby, suspend, off;
+} dpms_timeout_t;
+
 static Display *display = NULL;
 static Window window;
+
+static dpms_timeout_t server, user = {0, 0, 0};
+static int dpms_manual = 0, dpms_capable = 0;
+static BOOL dpms_state = 0;
 
 static int doomsday = 1, pindex = 0;
 static char password[MAX_PASSWD_LEN + 1] = "";
@@ -49,16 +58,16 @@ x11_hide_cursor (void);
 static void
 main_cleanup (void);
 
-static int
+static void
 parse_arguments (int argc, char **argv);
+
+static void
+parse_dpms_arguments (const char *options);
 
 int
 main (int argc, char **argv)
 {
-  if (parse_arguments (argc, argv) != 0)
-    {
-      exit (EXIT_FAILURE);
-    }
+  parse_arguments (argc, argv);
 
   if (atexit (main_cleanup) != 0)
     {
@@ -84,12 +93,45 @@ x11_init (int argc, char **argv)
   XSetWindowAttributes xswa;
   XClassHint xch = {"xlockmost", "xlockmost"};
 
-  display = XOpenDisplay (NULL);
+  int dummy;
+  CARD16 power_level;
 
+  display = XOpenDisplay (NULL);
   if (display == NULL)
     {
       trace ("unable to open display");
       exit (EXIT_FAILURE);
+    }
+
+  if (DPMSQueryExtension (display, &dummy, &dummy) && DPMSCapable (display))
+    {
+      dpms_capable = 1;
+
+      if (DPMSInfo (display, &power_level, &dpms_state) && dpms_state != True)
+        {
+          DPMSEnable (display);
+        }
+
+      if (DPMSGetTimeouts (display, &server.standby,
+                           &server.suspend, &server.off) != True)
+        {
+          dpms_capable = 0;
+
+          if (dpms_state != True)
+            {
+              DPMSDisable (display);
+            }
+
+          trace ("DPMSGetTimeouts failed");
+        }
+      else
+        {
+          DPMSSetTimeouts (display, user.standby, user.suspend, user.off);
+        }
+    }
+  else
+    {
+      trace ("XDPMS extension not supported");
     }
 
   screen = DefaultScreen (display);
@@ -145,6 +187,17 @@ x11_cleanup (void)
       XUngrabPointer (display, CurrentTime);
 
       XUndefineCursor (display, window);
+
+      if (dpms_manual && dpms_capable)
+        {
+          if (dpms_state != True)
+            {
+              DPMSDisable (display);
+            }
+
+          DPMSSetTimeouts (display, server.standby,
+                           server.suspend, server.off);
+        }
 
       XDestroyWindow (display, window);
       XCloseDisplay (display);
@@ -282,13 +335,14 @@ main_cleanup (void)
   trace ("good bye");
 }
 
-static int
+static void
 parse_arguments (int argc, char **argv)
 {
-  char *short_options = "vh";
+  char *short_options = "vhd:";
   struct option long_options[] = {
-    {"version", no_argument, 0, 'v'},
-    {"help",    no_argument, 0, 'h'},
+    {"dpms",    required_argument,  0, 'd'},
+    {"version", no_argument,        0, 'v'},
+    {"help",    no_argument,        0, 'h'},
 
     {0, 0, 0, 0}
   };
@@ -299,6 +353,10 @@ parse_arguments (int argc, char **argv)
     {
       switch (opt)
         {
+        case 'd':
+          dpms_manual = 1;
+          parse_dpms_arguments (optarg);
+          break;
         case 'v':
           printf ("%s %s Copyright (C) 2010 Alexey Smirnov\n",
                   PACKAGE_NAME, VERSION);
@@ -307,15 +365,99 @@ parse_arguments (int argc, char **argv)
         case 'h':
           puts ("Usage: " PACKAGE_NAME " [options]");
           puts ("Options:");
+          puts ("   -d, --dpms=TIMEOUT   set dpms off timeout");
           puts ("   -v, --version        print version number");
           puts ("   -h, --help           show this help screen");
           exit (EXIT_SUCCESS);
           break;
-        default:
-          /* unrecognized option */
-          return 1;
+        default: /* unrecognized option */
+          exit (EXIT_FAILURE);
         }
     }
+}
 
-  return 0;
+static void
+parse_dpms_arguments (const char *options)
+{
+  const char *p = options;
+  char ent[16], *c = ent;
+
+  CARD16 *val = NULL, end = 1;
+
+  while (end)
+    {
+      switch (*p)
+        {
+        case 0:
+          end = 0;
+        case ',':
+          if (val != NULL)
+            {
+              *c = '\0';
+              *val = atoi (ent);
+
+              val = NULL;
+            }
+
+          c = ent;
+          break;
+        case ':':
+          if (strncmp (ent, "standby", c - ent) == 0)
+            {
+              val = &user.standby;
+            }
+          else if (strncmp (ent, "suspend", c - ent) == 0)
+            {
+              val = &user.suspend;
+            }
+          else if (strncmp (ent, "off", c - ent) == 0)
+            {
+              val = &user.off;
+            }
+          else
+            {
+              *c = '\0';
+              trace ("invalid dpms mode `%s'", ent);
+            }
+
+          c = ent;
+          break;
+        default:
+          if ((c - ent + 1) < sizeof (ent))
+            {
+              *c = *p; ++c;
+            }
+          else
+            {
+              c = ent;
+            }
+        }
+
+      ++p;
+    }
+
+  if ((user.suspend != 0) && (user.standby > user.suspend))
+    {
+      trace ("illegal combination of values\n"
+             "    standby time of %d is greater than suspend time of %d",
+             user.standby, user.suspend);
+      dpms_manual = 0;
+    }
+  else if ((user.off != 0) && (user.suspend > user.off))
+    {
+      trace ("illegal combination of values\n"
+             "    suspend time of %d is greater than off time of %d",
+             user.standby, user.suspend);
+      dpms_manual = 0;
+    }
+  else if ((user.suspend == 0) && (user.off != 0) && (user.standby > user.off))
+    {
+      trace ("illegal combination of values\n"
+             "    standby time of %d is greater than off time of %d",
+             user.standby, user.suspend);
+      dpms_manual = 0;
+    }
+
+  trace ("standby: %d suspend: %d off: %d",
+         user.standby, user.suspend, user.off);
 }
