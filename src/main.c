@@ -94,7 +94,7 @@ x11_init (int argc, char **argv)
   XClassHint xch = {"xlockmost", "xlockmost"};
 
   int dummy;
-  CARD16 power_level;
+  CARD16 power_lvl;
 
   display = XOpenDisplay (NULL);
   if (display == NULL)
@@ -103,35 +103,38 @@ x11_init (int argc, char **argv)
       exit (EXIT_FAILURE);
     }
 
-  if (DPMSQueryExtension (display, &dummy, &dummy) && DPMSCapable (display))
+  if (dpms_manual)
     {
-      dpms_capable = 1;
-
-      if (DPMSInfo (display, &power_level, &dpms_state) && dpms_state != True)
+      if (DPMSQueryExtension (display, &dummy, &dummy) && DPMSCapable (display))
         {
-          DPMSEnable (display);
-        }
+          dpms_capable = 1;
 
-      if (DPMSGetTimeouts (display, &server.standby,
-                           &server.suspend, &server.off) != True)
-        {
-          dpms_capable = 0;
-
-          if (dpms_state != True)
+          if (DPMSInfo (display, &power_lvl, &dpms_state) && dpms_state != True)
             {
-              DPMSDisable (display);
+              DPMSEnable (display);
             }
 
-          trace ("DPMSGetTimeouts failed");
+          if (DPMSGetTimeouts (display, &server.standby,
+                               &server.suspend, &server.off) != True)
+            {
+              dpms_capable = 0;
+
+              if (dpms_state != True)
+                {
+                  DPMSDisable (display);
+                }
+
+              trace ("DPMSGetTimeouts failed");
+            }
+          else
+            {
+              DPMSSetTimeouts (display, user.standby, user.suspend, user.off);
+            }
         }
       else
         {
-          DPMSSetTimeouts (display, user.standby, user.suspend, user.off);
+          trace ("XDPMS extension not supported");
         }
-    }
-  else
-    {
-      trace ("XDPMS extension not supported");
     }
 
   screen = DefaultScreen (display);
@@ -338,14 +341,21 @@ main_cleanup (void)
 static void
 parse_arguments (int argc, char **argv)
 {
-  char *short_options = "vhd:";
-  struct option long_options[] = {
+  const char *short_options = "vhd:";
+  const struct option long_options[] = {
     {"dpms",    required_argument,  0, 'd'},
     {"version", no_argument,        0, 'v'},
     {"help",    no_argument,        0, 'h'},
 
     {0, 0, 0, 0}
   };
+
+  const char *usage =
+    "Usage: " PACKAGE_NAME " [options]\n"
+    "Options:\n"
+    "   -h, --help                                show this help screen\n"
+    "   -v, --version                             print version number\n"
+    "   -d, --dpms MODE:TIMEOUT[,MODE:TIMEOUT...] set dpms mode and timeout";
 
   int opt, optind;
   while ((opt = getopt_long (argc, argv, short_options,
@@ -363,11 +373,7 @@ parse_arguments (int argc, char **argv)
           exit (EXIT_SUCCESS);
           break;
         case 'h':
-          puts ("Usage: " PACKAGE_NAME " [options]");
-          puts ("Options:");
-          puts ("   -d, --dpms=TIMEOUT   set dpms off timeout");
-          puts ("   -v, --version        print version number");
-          puts ("   -h, --help           show this help screen");
+          puts (usage);
           exit (EXIT_SUCCESS);
           break;
         default: /* unrecognized option */
@@ -382,13 +388,14 @@ parse_dpms_arguments (const char *options)
   const char *p = options;
   char ent[16], *c = ent;
 
-  CARD16 *val = NULL, end = 1;
+  CARD16 *val = NULL;
+  int end = 1;
 
   while (end)
     {
       switch (*p)
         {
-        case 0:
+        case '\0':
           end = 0;
         case ',':
           if (val != NULL)
@@ -425,7 +432,8 @@ parse_dpms_arguments (const char *options)
         default:
           if ((c - ent + 1) < sizeof (ent))
             {
-              *c = *p; ++c;
+              *c = *p;
+              ++c;
             }
           else
             {
