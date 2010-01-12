@@ -1,0 +1,10 @@
+#! /usr/bin/make -f
+
+export DH_ALWAYS_EXCLUDE := LICENSE
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	./autogen.sh
+	dh_auto_configure
