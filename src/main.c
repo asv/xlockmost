@@ -34,7 +34,7 @@ static dpms_timeout_t server, user = {0, 0, 0};
 static int dpms_manual = 0, dpms_capable = 0;
 static BOOL dpms_state = 0;
 
-static int doomsday = 1, pindex = 0;
+static int doomsday = 0, pindex = 0;
 static char password[MAX_PASSWD_LEN + 1] = "";
 
 static void
@@ -274,7 +274,7 @@ static void
 x11_do_main_loop (void)
 {
   XEvent ev;
-  while (doomsday)
+  while (!doomsday)
     {
       XNextEvent (display, &ev);
 
@@ -306,7 +306,7 @@ x11_do_main_loop (void)
 static void
 x11_break_main_loop (void)
 {
-  doomsday = 0;
+  doomsday = 1;
 }
 
 static void
